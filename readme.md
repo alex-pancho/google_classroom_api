@@ -1,73 +1,50 @@
-Partly based on Diksha-Rathi [Google-Classroom-Scripts](https://github.com/Diksha-Rathi/Google-Classroom-Script)
+# Google Classroom API Automation
 
-# Google Classroom Scripts
- A collection of Python scripts to help school teachers automate everyday tasks on Google Classroom.
+Partly based on [Diksha-Rathi/Google-Classroom-Scripts](https://github.com/Diksha-Rathi/Google-Classroom-Scripts)
+
+A modular Python toolkit to help school teachers automate everyday tasks on Google Classroom, such as managing courses, students, announcements, topics, and materials.  
+This project provides reusable classes and functions for interacting with the Google Classroom API, with improved logging and extensibility.
+
+## Features
+
+- **Course management**: List, create, and select courses.
+- **Student management**: Add students individually or in bulk from CSV/JSON, export student lists.
+- **Content automation**: Post announcements, create topics, and upload materials.
+- **Logging**: All actions and errors are logged to `google_class.log`.
+- **Extensible**: Easily add new scripts or extend existing functionality.
 
 ## Setup
 
 1. Install Python from [https://www.python.org/downloads/](https://www.python.org/downloads/)
-2. Create a GCP project with the Classroom API enabled ([refer](https://developers.google.com/workspace/guides/create-project))
-3. Download credentials.json for desktop applications ([refer](https://developers.google.com/workspace/guides/create-credentials))
-4. Zoom - Login with your account on [https://marketplace.zoom.us/develop/create](https://marketplace.zoom.us/develop/create) and create a JWT token. Copy the API key and secret.
-5. Add python dependencies - run: pip install -r requirements.txt
+2. Create a GCP project with the Classroom API enabled ([guide](https://developers.google.com/workspace/guides/create-project))
+3. Download `client_secret.json` for desktop applications ([guide](https://developers.google.com/workspace/guides/create-credentials)) and place it in the project root.
+4. (Optional) For Zoom integration, create a JWT app at [Zoom Marketplace](https://marketplace.zoom.us/develop/create) and note your API key and secret.
+5. Install dependencies:  
+   ```
+   pip install -r requirements.txt
+   ```
 
-## Scripts
+## Usage
 
-### [PostMaterialInDraft.py]google/PostMaterialInDraft.py)
+Import and use the provided classes in your own scripts to automate Google Classroom tasks.  
+See the `classroom_api.py` file for examples of available classes and methods:
 
-**Problem Statement** -
-Once a Weekly or Periodic test completes, teachers need to create several draft posts where the evaluated answer scripts of the students are uploaded. The access is restricted to one student per folder. The schema is as below - 
+- `Courses` – Manage and select courses by name or ID.
+- `CoursesCreation` – Create new courses.
+- `Students` – Add, list, and export students.
+- `Content` – Post announcements, create topics, and upload materials.
 
-* PostType : Material
-* Topic : \<Test title> - Answer Scripts Evaluated
-* Title : Roll No <#> - \<Name of the student>
-* Description : \<description text>
-* For : Individual student - Same as Title
+## ToDo
 
- **How to execute script?**
+- [ ] Add a web UI using Flask
 
-Prerequisite - CSV file [ClassList.csv](google/ClassList.csv) with Roll number, and Full Name of each student
+## Contributing
 
-Script changes - Edit the following fields:
-```
-COURSE = <course name> 
-TOPIC = <test title> - Evaluated Answer Scripts 
-DESC = <description> 
-```
-
-Execute the script (if student ids are already populated in CSV, then `student.create_csv(course_id)` can be skipped).
-
-### [PostMeetingLinkInAnnouncement.py](google/PostMeetingLinkInAnnouncement.py)
-
-**Problem Statement** - 
-Create Zoom link for every class and post in the announcement feed everyday as per input time table. Add announcement to the classroom with below format-
-
-* Title - \<zoom meeting title>
-* Time - \<time of the class>
-* Join Zoom meeting - \<Link of the zoom meeting>
-* ID - \<meeting id>
-* Passcode - \<meeting passcode>
-
-**How to execute script?**
-
-Prerequisite - CSV file [TimeTable.json](google/TimeTable.json) with class schedule updated. 
-
-Script changes - Edit the following fields:
- ```
-API_KEY = '<key>'
-API_SECRET = '<secret>'
- ```
-
-Execute the script.
-
-## ToDo 
-- [ ] Add UI using Flask
-
-## Contribute 
-Create an issue, and let's chat!
+Create an issue or pull request to discuss improvements or new features!
 
 ## References
-[Quickstart](https://developers.google.com/classroom/quickstart/python)\
-[Google Classroom API](https://developers.google.com/classroom/reference/rest)\
-[Google API Python Client](https://googleapis.github.io/google-api-python-client/docs/dyn/classroom_v1.courses.html)\
-[Zoom API Reference](https://marketplace.zoom.us/docs/api-reference/introduction)
+
+- [Google Classroom API Quickstart](https://developers.google.com/classroom/quickstart/python)
+- [Google Classroom API Reference](https://developers.google.com/classroom/reference/rest)
+- [Google API Python Client](https://googleapis.github.io/google-api-python-client/docs/dyn/classroom_v1.courses.html)
+- [Zoom API Create a Meeting Reference](https://developers.zoom.us/docs/api/meetings/#tag/meetings/POST/users/{userId}/meetings)
