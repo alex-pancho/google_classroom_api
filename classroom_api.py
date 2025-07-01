@@ -1,26 +1,21 @@
 """
 Google Classroom Manager - Enhanced system for working with Google Classroom API
 """
-import codecs
-import io
-import sys
-import logging
-
-from dataclasses import dataclass, asdict
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import List, Dict, Optional
-from tempfile import NamedTemporaryFile
 
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.errors import HttpError
 from googleapiclient.discovery import build
 
-from fileprocessor import read_csv_json_file, write_csv_json_file
-
+from logger import logger
 
 SCOPES = [
     "https://www.googleapis.com/auth/classroom.rosters",
+    "https://www.googleapis.com/auth/classroom.profile.emails",
+    "https://www.googleapis.com/auth/classroom.profile.photos",
     "https://www.googleapis.com/auth/classroom.courses",
     "https://www.googleapis.com/auth/classroom.coursework.students",
     "https://www.googleapis.com/auth/classroom.courseworkmaterials",
@@ -29,30 +24,19 @@ SCOPES = [
     "https://www.googleapis.com/auth/calendar",
 ]
 
-# Override stdout and stderr to support UTF-8
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8")
-utf8_stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, "strict")
-file_handler = logging.FileHandler("google_class.log", encoding="utf8")
-
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[file_handler, logging.StreamHandler(utf8_stdout)],
-)
-logger = logging.getLogger(__name__)
-
 
 def authenticate():
     creds = False
+    expired = False
     my_dir = Path(__file__).parent
     token_file = my_dir / "token.json"
     credentials_file = my_dir / "client_secret.json"
     # Авторизація користувача
     if token_file.exists():
         creds = Credentials.from_authorized_user_file(token_file, SCOPES)
-    if not creds or creds.expired:
+    if creds:
+        expired = creds.expiry.replace(tzinfo=timezone.utc) - datetime.now(timezone.utc) < timedelta(seconds=60)
+    if not creds or creds.expired or expired:
         logger.info("Refreshing tokens...")
         if not credentials_file.exists():
             raise FileNotFoundError(f"Credentials file not found: {credentials_file}")
@@ -76,9 +60,10 @@ class GoogleClassroomBuild:
     def build_services(self) -> None:
         """Build Google API services"""
         try:
-            self.classroom_service = build(
+            self.classroom = build(
                 "classroom", "v1", credentials=self.creds
-            ).courses()
+            )
+            self.classroom_service = self.classroom.courses()
             self.calendar_service = build(
                 "calendar", "v3", credentials=self.creds
             )
@@ -90,7 +75,7 @@ class GoogleClassroomBuild:
 
 class Courses(GoogleClassroomBuild):
 
-    def __init__(self, course_id_or_name):
+    def __init__(self, course_id_or_name=None):
         """
         Initialize Google Classroom Courses manager
 
@@ -98,13 +83,27 @@ class Courses(GoogleClassroomBuild):
             course_id_or_name: Course id (int) or name(str)
         """
         super().__init__()
-        self.get_courses()
+        
         if isinstance(course_id_or_name, str):
             self.get_course_by_name(course_id_or_name)
         elif isinstance(course_id_or_name, int):
             self.get_course_by_id(course_id_or_name)
         else:
-            raise ValueError("Invalid course identifier type")
+            self.get_courses()
+    
+    def __call__(self):
+        try:
+            return self.courses
+        except AttributeError:
+            logger.error("❌ Courses list not set. Please initialize first.")
+            return ""
+        
+    def __str__(self):
+        try:
+            return str(self.course_id)
+        except AttributeError:
+            logger.error("❌ Course ID not set. Please call get_course_by_name or get_course_by_id first.")
+            return ""
 
     def get_courses(self) -> List[Dict]:
         """Get list of all courses"""
@@ -165,7 +164,13 @@ class Courses(GoogleClassroomBuild):
 
 class CoursesCreation(GoogleClassroomBuild):
 
-    def __init__(self, name, **kwargs):
+    def __init__(self, 
+        name: str,
+        section: str = "",
+        room: str = "",
+        description: str = "",
+        description_heading: str = ""
+        ):
         """
         Create new course
 
@@ -180,36 +185,6 @@ class CoursesCreation(GoogleClassroomBuild):
             Created course ID or None
         """
         super().__init__()
-        self.create_course(name, **kwargs)
-
-    def __call__(self):
-        try:
-            return self.course_id
-        except AttributeError:
-            logger.error("❌ Course ID not set. Please call create_course first.")
-            return None
-
-    def create_course(
-        self,
-        name: str,
-        section: str = "",
-        room: str = "",
-        description: str = "",
-        description_heading: str = "",
-    ) -> Optional[str]:
-        """
-        Create new course
-
-        Args:
-            name: Course name
-            section: Section
-            room: Room
-            description: Description
-            description_heading: Description heading
-
-        Returns:
-            Created course ID or None
-        """
         course_data = {
             "name": name,
             "section": section,
@@ -223,7 +198,6 @@ class CoursesCreation(GoogleClassroomBuild):
             course = self.classroom_service.create(body=course_data).execute()
             logger.info(f"✅ Course created: {name} (ID: {course['id']})")
             self.course_id = course["id"]
-            return course["id"]
 
         except HttpError as e:
             logger.error(f"❌ HTTP error creating course: {e}")
@@ -232,157 +206,19 @@ class CoursesCreation(GoogleClassroomBuild):
             logger.error(f"❌ Error creating course: {e}")
             return None
 
-
-class Students(GoogleClassroomBuild):
-
-    def __init__(self, course_id):
-        super().__init__()
-        self.course_id = course_id
-
-    def add_student(self, student_email: str) -> bool:
-        """
-        Add student to course
-
-        Args:
-            course_id: Course ID
-            student_email: Student email
-
-        Returns:
-            True if successful, False otherwise
-        """
+    def __call__(self):
         try:
-            student_data = {"userId": student_email}
-
-            response = (
-                self.classroom_service.students()
-                .create(courseId=self.course_id, body=student_data)
-                .execute()
-            )
-
-            student_name = (
-                response.get("profile", {})
-                .get("name", {})
-                .get("fullName", student_email)
-            )
-            logger.info(f"✅ Student added: {student_name}")
-            return True
-
-        except HttpError as e:
-            if e.resp.status == 409:
-                logger.warning(f"⚠️ Student {student_email} already in course")
-            else:
-                logger.error(f"❌ HTTP error adding student: {e}")
-            return False
-        except Exception as e:
-            logger.error(f"❌ Error adding student: {e}")
-            return False
-
-    def add_students_from_file(self, file_path: str) -> Dict[str, int]:
-        """
-        Add students from file (CSV or JSON)
-
-        Args:
-            course_id: Course ID
-            file_path: Path to file with students
-
-        Returns:
-            Addition statistics
-        """
-        stats = {"added": 0, "failed": 0, "already_exists": 0}
-
-        students = read_csv_json_file(file_path)
-        if not students or students is None:
-            logger.warning("⚠️ No valid students found")
-            return stats
-        logger.info(f"📖 Reading {len(students)} students from file")
-
-        # Add each student
-        for student in students:
-            email = (
-                student.get("email")
-                or student.get("Email")
-                    or student.get("student_email")
-                )
-
-            if not email:
-                logger.warning(f"⚠️ No email found for student: {student}")
-                stats["failed"] += 1
-                continue
-
-            if self.add_student(email):
-                stats["added"] += 1
-            else:
-                if "already in course" in str(student):
-                    stats["already_exists"] += 1
-                else:
-                    stats["failed"] += 1
-
-        logger.info(
-            f"📊 Results: {stats['added']} added, {stats['already_exists']} already exist, {stats['failed']} failed"
-        )
-        return stats
-
-    def get_students(self) -> List[Dict]:
-        """
-        Get list of students in course
-
-        Args:
-            course_id: Course ID
-
-        Returns:
-            List of students
-        """
+            return self.course_id
+        except AttributeError:
+            logger.error("❌ Course ID not set. Please call create_course first.")
+            return None
+    
+    def __str__(self):
         try:
-            students = []
-            page_token = None
-
-            while True:
-                response = (
-                    self.classroom_service.students()
-                    .list(courseId=self.course_id, pageToken=page_token, pageSize=100)
-                    .execute()
-                )
-
-                students.extend(response.get("students", []))
-                page_token = response.get("nextPageToken")
-
-                if not page_token:
-                    break
-
-            logger.info(f"👥 Found {len(students)} students in course")
-            return students
-
-        except HttpError as e:
-            logger.error(f"❌ HTTP error getting students: {e}")
-            return []
-        except Exception as e:
-            logger.error(f"❌ Error getting students: {e}")
-            return []
-
-    def export_students_to_csv(self, output_file: str = "students.csv") -> bool:
-        """
-        Export students list to CSV file
-
-        Args:
-            course_id: Course ID
-            output_file: Output CSV file path
-
-        Returns:
-            True if successful, False otherwise
-        """
-
-        students = self.get_students()
-
-        if not students:
-            logger.warning("⚠️ No students found to export")
-            return False
+            return self.course_id
+        except AttributeError:
+            return "Course not created yet"
         
-        out = write_csv_json_file(output_file, students)
-        if not out:
-            logger.error(f"❌ Error writing to file: {output_file}")
-            return False
-        logger.info(f"✅ Students exported to {output_file}")
-        return True
 
 class Content(Courses):
 
@@ -542,16 +378,6 @@ class Content(Courses):
             logger.error(f"❌ Error creating material: {e}")
             return None
 
-
-@dataclass
-class ClassroomCourseTemplate:
-    """Dataclass representing a Google Classroom course template"""
-    name: str
-    section: str
-    room: str
-    description_heading: str
-    description: str
-
-    def to_dict(self) -> Dict:
-        """Convert template to dictionary for API calls"""
-        return asdict(self)
+if __name__ == "__main__":
+    authenticate()
+    logger.info("Google Classroom API initialized successfully")

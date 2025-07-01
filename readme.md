@@ -2,7 +2,7 @@
 
 Partly based on [Diksha-Rathi/Google-Classroom-Scripts](https://github.com/Diksha-Rathi/Google-Classroom-Scripts)
 
-A modular Python toolkit to help school teachers automate everyday tasks on Google Classroom, such as managing courses, students, announcements, topics, and materials.  
+A modular Python toolkit to help teachers automate everyday tasks on Google Classroom, such as managing courses, students, announcements, topics, and materials.  
 This project provides reusable classes and functions for interacting with the Google Classroom API, with improved logging and extensibility.
 
 ## Features
