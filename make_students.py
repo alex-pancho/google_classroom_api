@@ -1,4 +1,4 @@
-from cr_students_api import Students
+from classroom_students_api import Students
 
 def add_students_to_classroom(course_id, file_path):
     """
